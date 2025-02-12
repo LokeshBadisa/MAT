@@ -16,6 +16,8 @@ import json
 import tempfile
 import torch
 import dnnlib
+import warnings
+warnings.filterwarnings("ignore")
 
 from training import training_loop
 # from training import training_loop_simmim as training_loop
@@ -23,6 +25,7 @@ from training import training_loop
 from metrics import metric_main
 from torch_utils import training_stats
 from torch_utils import custom_ops
+
 
 #----------------------------------------------------------------------------
 
@@ -118,31 +121,35 @@ def setup_training_loop_kwargs(
     # Dataset: data, cond, subset, mirror
     # -----------------------------------
 
-    assert data is not None
-    assert isinstance(data, str)
+    # assert data is not None
+    # assert isinstance(data, str)
     if data_val is None:
         data_val = data
     if dataloader is None:
         dataloader = 'datasets.dataset_512.ImageFolderMaskDataset'
+    train_dataloader = 'datasets.dataset_256.ModImageFolderMaskDataset'
+    val_dataloader = 'datasets.dataset_256.PartImageNetDataset'
 
-    args.training_set_kwargs = dnnlib.EasyDict(class_name=dataloader, path=data,
-                                               use_labels=True, max_size=None, xflip=False)
-    args.val_set_kwargs = dnnlib.EasyDict(class_name=dataloader, path=data_val,
-                                          use_labels=True, max_size=None, xflip=False)
+    args.training_set_kwargs = dnnlib.EasyDict(class_name=train_dataloader, )
+                                            #    use_labels=True, max_size=None, xflip=False)
+    args.val_set_kwargs = dnnlib.EasyDict(class_name=val_dataloader, )
+                                        #   use_labels=True, max_size=None, xflip=False)
     args.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, num_workers=3, prefetch_factor=2)
 
     try:
         # training part
         training_set = dnnlib.util.construct_class_by_name(**args.training_set_kwargs) # subclass of training.dataset.Dataset
-        args.training_set_kwargs.resolution = training_set.resolution # be explicit about resolution
-        args.training_set_kwargs.use_labels = training_set.has_labels # be explicit about labels
-        args.training_set_kwargs.max_size = len(training_set) # be explicit about dataset size
+        # args.training_set_kwargs.resolution = training_set.resolution # be explicit about resolution
+        # args.training_set_kwargs.use_labels = training_set.has_labels # be explicit about labels
+        # args.training_set_kwargs.max_size = len(training_set) # be explicit about dataset size
+        # args.training_set_kwargs.path = '/raid/student/2021/ai21btech11005/Imagenet' #Fake property
         desc = training_set.name
         # validation part
         val_set = dnnlib.util.construct_class_by_name(**args.val_set_kwargs)
-        args.val_set_kwargs.resolution = val_set.resolution
-        args.val_set_kwargs.use_labels = val_set.has_labels
-        args.val_set_kwargs.max_size = len(val_set)
+        # args.val_set_kwargs.resolution = val_set.resolution
+        # args.val_set_kwargs.use_labels = val_set.has_labels
+        # args.val_set_kwargs.max_size = len(val_set)
+        # args.val_set_kwargs.path = '/raid/student/2021/ai21btech11005/Imagenet' #Fake property
 
         del training_set, val_set # conserve memory
     except IOError as err:
@@ -458,8 +465,10 @@ def subprocess_fn(rank, args, temp_dir):
             init_method = 'file:///' + init_file.replace('\\', '/')
             torch.distributed.init_process_group(backend='gloo', init_method=init_method, rank=rank, world_size=args.num_gpus)
         else:
-            init_method = f'file://{init_file}'
-            torch.distributed.init_process_group(backend='nccl', init_method=init_method, rank=rank, world_size=args.num_gpus)
+            # init_method = f'file://{init_file}'
+            os.environ["MASTER_ADDR"] = "localhost"    
+            os.environ["MASTER_PORT"] = '12345'
+            torch.distributed.init_process_group(backend='nccl', rank=rank, world_size=args.num_gpus)
 
     # Init torch_utils.
     sync_device = torch.device('cuda', rank) if args.num_gpus > 1 else None
@@ -495,7 +504,7 @@ class CommaSeparatedList(click.ParamType):
 @click.option('-n', '--dry-run', help='Print training options and exit', is_flag=True)
 
 # Dataset.
-@click.option('--data', help='Training data (directory or zip)', metavar='PATH', required=True)
+@click.option('--data', help='Training data (directory or zip)', metavar='PATH')
 @click.option('--data_val', help='Validation data (directory or zip)', metavar='PATH')
 @click.option('--dataloader', help='dataloader', type=str, metavar='STRING')
 @click.option('--cond', help='Train conditional model based on dataset labels [default: false]', type=bool, metavar='BOOL')
@@ -606,20 +615,20 @@ def main(ctx, outdir, dry_run, **config_kwargs):
     print(json.dumps(args, indent=2))
     print()
     print(f'Output directory:   {args.run_dir}')
-    print(f'Training data:      {args.training_set_kwargs.path}')
+    # print(f'Training data:      {args.training_set_kwargs.path}')
     print(f'Training duration:  {args.total_kimg} kimg')
     print(f'Number of GPUs:     {args.num_gpus}')
-    print(f'Number of images:   {args.training_set_kwargs.max_size}')
-    print(f'Image resolution:   {args.training_set_kwargs.resolution}')
-    print(f'Conditional model:  {args.training_set_kwargs.use_labels}')
-    print(f'Dataset x-flips:    {args.training_set_kwargs.xflip}')
+    # print(f'Number of images:   {args.training_set_kwargs.max_size}')
+    # print(f'Image resolution:   {args.training_set_kwargs.resolution}')
+    # print(f'Conditional model:  {args.training_set_kwargs.use_labels}')
+    # print(f'Dataset x-flips:    {args.training_set_kwargs.xflip}')
     print()
     print('Validation options:')
-    print(f'Validation data:      {args.val_set_kwargs.path}')
-    print(f'Number of images:   {args.val_set_kwargs.max_size}')
-    print(f'Image resolution:   {args.val_set_kwargs.resolution}')
-    print(f'Conditional model:  {args.val_set_kwargs.use_labels}')
-    print(f'Dataset x-flips:    {args.val_set_kwargs.xflip}')
+    # print(f'Validation data:      {args.val_set_kwargs.path}')
+    # print(f'Number of images:   {args.val_set_kwargs.max_size}')
+    # print(f'Image resolution:   {args.val_set_kwargs.resolution}')
+    # print(f'Conditional model:  {args.val_set_kwargs.use_labels}')
+    # print(f'Dataset x-flips:    {args.val_set_kwargs.xflip}')
     print()
 
     # Dry run?

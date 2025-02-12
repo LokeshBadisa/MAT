@@ -16,10 +16,11 @@ import PIL.Image
 import numpy as np
 import torch
 import dnnlib
+from tqdm import tqdm
 from torch_utils import misc
 from torch_utils import training_stats
-from torch_utils.ops import conv2d_gradfix
-from torch_utils.ops import grid_sample_gradfix
+# from torch_utils.ops import conv2d_gradfix
+# from torch_utils.ops import grid_sample_gradfix
 
 import legacy
 from metrics import metric_main
@@ -41,7 +42,8 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
         # Group training samples by label.
         label_groups = dict() # label => [idx, ...]
         for idx in range(len(training_set)):
-            label = tuple(training_set.get_details(idx).raw_label.flat[::-1])
+            # label = tuple(training_set.get_details(idx).raw_label.flat[::-1])            
+            label = np.where(training_set[idx][-1]!=0)[0][0]
             if label not in label_groups:
                 label_groups[label] = []
             label_groups[label].append(idx)
@@ -71,8 +73,9 @@ def save_image_grid(img, fname, drange, grid_size):
     img = (img - lo) * (255 / (hi - lo))
     img = np.rint(img).clip(0, 255).astype(np.uint8)
 
-    gw, gh = grid_size
+    gw, gh = grid_size    
     _N, C, H, W = img.shape
+    
     img = img.reshape(gh, gw, C, H, W)
     img = img.transpose(0, 3, 1, 4, 2)
     img = img.reshape(gh * H, gw * W, C)
@@ -116,7 +119,7 @@ def training_loop(
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
     resume_pkl              = None,     # Network pickle to resume training from.
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
-    allow_tf32              = False,    # Enable torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32?
+    allow_tf32              = True,    # Enable torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32?
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
 ):
@@ -125,11 +128,13 @@ def training_loop(
     device = torch.device('cuda', rank)
     np.random.seed(random_seed * num_gpus + rank)
     torch.manual_seed(random_seed * num_gpus + rank)
-    torch.backends.cudnn.benchmark = cudnn_benchmark    # Improves training speed.
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = False # Improves training speed.
     torch.backends.cuda.matmul.allow_tf32 = allow_tf32  # Allow PyTorch to internally use tf32 for matmul
     torch.backends.cudnn.allow_tf32 = allow_tf32        # Allow PyTorch to internally use tf32 for convolutions
-    conv2d_gradfix.enabled = True                       # Improves training speed.
-    grid_sample_gradfix.enabled = True                  # Avoids errors with the augmentation pipe.
+    # conv2d_gradfix.enabled = False                       # Improves training speed.
+    # grid_sample_gradfix.enabled = False                  # Avoids errors with the augmentation pipe.
 
     # Load training set.
     if rank == 0:
@@ -189,8 +194,8 @@ def training_loop(
     if rank == 0:
         print(f'Distributing across {num_gpus} GPUs...')
     ddp_modules = dict()
-    for name, module in [('G_mapping', G.mapping), ('G_synthesis', G.synthesis), ('D', D), (None, G_ema), ('augment_pipe', augment_pipe)]:
-        if (num_gpus > 1) and (module is not None) and len(list(module.parameters())) != 0:
+    for name, module in tqdm([('G_mapping', G.mapping), ('G_synthesis', G.synthesis), ('D', D), (None, G_ema), ('augment_pipe', augment_pipe)]):
+        if (num_gpus > 1) and (module is not None) and len(list(module.parameters())) != 0:            
             module.requires_grad_(True)
             module = torch.nn.parallel.DistributedDataParallel(module, device_ids=[device], broadcast_buffers=False)
             module.requires_grad_(False)
@@ -251,6 +256,7 @@ def training_loop(
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, masks, labels = setup_snapshot_image_grid(training_set=val_set)
+        
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         # adaptation to inpainting config
         save_image_grid(masks, os.path.join(run_dir, 'masks.png'), drange=[0, 1], grid_size=grid_size)

@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#Lokesh-specifc extensions
+*.ipynb
+output_path*
+*pkl

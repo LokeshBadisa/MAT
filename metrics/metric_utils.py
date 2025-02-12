@@ -267,7 +267,8 @@ def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel
     detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank, verbose=progress.verbose)
 
     # Main loop.
-    item_subset = [(i * opts.num_gpus + opts.rank) % stats.max_items for i in range((stats.max_items - 1) // opts.num_gpus + 1)]
+    item_subset = [(i * opts.num_gpus + opts.rank) % len(dataset) for i in range((len(dataset) - 1) // opts.num_gpus + 1)]
+    
     for imgs_batch, masks_batch, labels_batch in torch.utils.data.DataLoader(dataset=dataset, sampler=item_subset,
                                                               batch_size=batch_size,
                                                               **data_loader_kwargs):

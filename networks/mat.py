@@ -95,6 +95,7 @@ class Conv2dLayerPartial(nn.Module):
             with torch.no_grad():
                 if self.weight_maskUpdater.type() != x.type():
                     self.weight_maskUpdater = self.weight_maskUpdater.to(x)
+                mask = mask.to(torch.float32)
                 update_mask = F.conv2d(mask, self.weight_maskUpdater, bias=None, stride=self.stride, padding=self.padding)
                 mask_ratio = self.slide_winsize / (update_mask + 1e-8)
                 update_mask = torch.clamp(update_mask, 0, 1)  # 0 or 1
@@ -750,7 +751,7 @@ class FirstStage(nn.Module):
             res = res * 2
             self.dec_conv.append(DecStyleBlock(res, dim, dim, activation, style_dim, use_noise, demodulate, img_channels))
 
-    def forward(self, images_in, masks_in, ws, noise_mode='random'):
+    def forward(self, images_in, masks_in, ws, noise_mode='random'):        
         x = torch.cat([masks_in - 0.5, images_in * masks_in], dim=1)
 
         skips = []

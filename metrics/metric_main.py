@@ -94,6 +94,12 @@ def fid36k5_full(opts):
     return dict(fid36k5_full=fid)
 
 @register_metric
+def fid_imagenet(opts):
+    opts.dataset_kwargs.update(max_size=None, xflip=False)
+    fid = frechet_inception_distance.compute_fid(opts, max_real=1000000, num_gen=1000000)
+    return dict(fid_imagenet=fid)
+
+@register_metric
 def fid_places(opts):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
     fid = frechet_inception_distance.compute_fid(opts, max_real=36500, num_gen=36500)

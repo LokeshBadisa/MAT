@@ -1,7 +1,7 @@
 easydict
 future
 matplotlib
-numpy
+numpy==1.26
 opencv-python
 scikit-image
 scipy
